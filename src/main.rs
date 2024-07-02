@@ -1,7 +1,8 @@
+use priority_queue::PriorityQueue;
 use rand::seq::SliceRandom;
 use rand::Rng;
 use std::{
-    collections::{BinaryHeap, HashMap, HashSet},
+    collections::{BTreeSet, HashMap},
     fmt::{Debug, Display},
 };
 
@@ -150,12 +151,17 @@ impl State {
         let mut st = State::new(stacks, saved);
 
         for (stack, l) in s.trim().lines().enumerate() {
-            for c in l.chars() {
-                st.stacks[stack]
-                    .cards_mut()
-                    .unwrap()
-                    .cards
-                    .push(Card { kind: c as u8 });
+            for (i, c) in l.chars().enumerate() {
+                if c == 'L' {
+                    st.stacks[stack] = Stack::Locked;
+                    assert_eq!(i, 0);
+                } else {
+                    st.stacks[stack]
+                        .cards_mut()
+                        .unwrap()
+                        .cards
+                        .push(Card { kind: c as u8 });
+                }
             }
         }
 
@@ -321,15 +327,18 @@ impl State {
         let mut visited: HashMap<State, Option<(State, Move)>> = HashMap::new();
 
         let mut max_num_locked = 0;
-        let mut frontier = BinaryHeap::new();
-
-        frontier.push(QueueEntry {
+        let mut frontier = PriorityQueue::new();
+        // let ci = |e: &QueueEntry| -((10 - e.state.num_locked() as i64) + e.moves as i64);
+        let ci = |e: &QueueEntry| -(e.state.groups() as i64 + e.moves as i64);
+        let init = QueueEntry {
             state: self.clone(),
             moves: 0,
             from: None,
-        });
+        };
+        let v = ci(&init);
+        frontier.push(init, v);
 
-        while let Some(s) = frontier.pop() {
+        while let Some((s, _p)) = frontier.pop() {
             if visited.contains_key(&s.state) {
                 continue;
             }
@@ -348,6 +357,11 @@ impl State {
                         path.push(*m);
                     } else {
                         path.reverse();
+                        eprintln!(
+                            "Cleaning up {} visited items and {} frontier items",
+                            visited.len(),
+                            frontier.len()
+                        );
                         return path;
                     }
                 }
@@ -357,11 +371,13 @@ impl State {
                 let mut next_state = s.state.clone();
                 next_state.play(m);
                 if !visited.contains_key(&next_state) {
-                    frontier.push(QueueEntry {
+                    let e = QueueEntry {
                         state: next_state,
                         moves: s.moves + 1,
                         from: Some((s.state.clone(), m)),
-                    });
+                    };
+                    let v = ci(&e);
+                    frontier.push(e, v);
                 }
             }
         }
@@ -383,27 +399,59 @@ impl State {
         }
         locked
     }
+
+    fn groups(&self) -> usize {
+        let mut n_groups = 0;
+        let mut locked = 0;
+        let mut distinct_grounded = [false; 256];
+
+        for stack in self.stacks.iter() {
+            let mut last = None;
+            if let Some(cards) = stack.cards() {
+                for (i, card) in cards.cards.iter().enumerate() {
+                    if i == 0 {
+                        distinct_grounded[card.kind as usize] = true;
+                    }
+                    if let Some(last_card) = last {
+                        if *card != last_card {
+                            n_groups += 1;
+                            last = Some(*card);
+                        }
+                    } else {
+                        n_groups += 1;
+                        last = Some(*card);
+                    }
+                }
+            } else {
+                locked += 1;
+            }
+        }
+
+        for saved in self.saved.iter() {
+            if let Some(saved) = saved {
+                if let Saved::Card(card) = saved {
+                    n_groups += 1;
+                    distinct_grounded[card.kind as usize] = true;
+                } else {
+                    locked += 1;
+                }
+            }
+        }
+
+        let l2 = self.num_locked();
+        debug_assert_eq!(l2, locked);
+        let remaining = 10 - l2;
+        let moves_to_ground =
+            remaining - distinct_grounded.iter().map(|x| *x as usize).sum::<usize>();
+        n_groups + moves_to_ground - remaining
+    }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Hash, Debug)]
 struct QueueEntry {
     state: State,
     moves: usize,
     from: Option<(State, Move)>,
-}
-
-impl PartialOrd for QueueEntry {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        // let ci = |v: &QueueEntry| (v.state.num_locked(), -(v.moves as i64));
-        let ci = |v: &QueueEntry| v.state.num_locked() as i64 - v.moves as i64;
-        ci(self).partial_cmp(&ci(other))
-    }
-}
-
-impl Ord for QueueEntry {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.partial_cmp(other).unwrap()
-    }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
@@ -425,23 +473,26 @@ enum Move {
 }
 
 fn main() {
-    let mut state = State::parse(
-        8,
-        1,
-        r"
-ytjdt
-h2het
-jwlll
-yyweh
-drr2t
-2ljdy
-dwwr2
-erejh
-",
-    );
+    let mut state = State::rand(8, 1);
+//     let mut state = State::parse(
+//         8,
+//         2,
+//         r"
+// L
+// tlhjl
+// ewwww
+// thjtl
+// jj
+// deyt
+// yhydy
+// leedd
+//     ",
+//     );
 
-    // state.saved[0] = Some(Saved::Card(Card { kind: 'e' as u8 }));
-    // state.saved[1] = Some(Saved::Card(Card { kind: 'r' as u8 }));
+//     state.saved[0] = Some(Saved::Card(Card { kind: b'h' }));
+//     state.saved[1] = Some(Saved::Locked);
+    // state.saved[2] = Some(Saved::Card(Card { kind: b'e' }));
+    // state.saved[3] = Some(Saved::Card(Card { kind: b'r' }));
 
     println!("{state}");
     let path = state.solve();
