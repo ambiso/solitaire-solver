@@ -1,9 +1,12 @@
 use priority_queue::PriorityQueue;
 use rand::seq::SliceRandom;
 use rand::Rng;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
     collections::{BTreeSet, HashMap},
     fmt::{Debug, Display},
+    iter::Sum,
+    ops::Add,
     time::Instant,
 };
 
@@ -264,9 +267,9 @@ impl State {
 
     fn lock_stack_if_lockable(&mut self, id: usize) {
         let stack = self.stacks[id].cards_mut().unwrap();
-        if stack.cards.len() > 0 {
+        if stack.cards.len() == 4 {
             let c = stack.cards[0];
-            if stack.cards.len() == 4 && stack.cards.iter().all(|x| *x == c) {
+            if stack.cards.iter().all(|x| *x == c) {
                 self.stacks[id] = Stack::Locked;
                 if self.saved.len() < 4 {
                     self.saved.push(None);
@@ -330,12 +333,13 @@ impl State {
                 );
                 to_card_stack.cards.push(card);
                 *from_card_stack = None;
+                self.lock_stack_if_lockable(to);
             }
         }
     }
 
     fn solve(&self) -> Vec<Move> {
-        let start = Instant::now();
+        // let start = Instant::now();
         let mut visited: HashMap<State, Option<(State, Move)>> = HashMap::new();
 
         let mut max_num_locked = 0;
@@ -357,7 +361,7 @@ impl State {
             let new_locked = s.state.num_locked();
             if new_locked > max_num_locked {
                 max_num_locked = new_locked;
-                println!("New max locked: {new_locked}");
+                // println!("New max locked: {new_locked}");
             }
             if new_locked == 10 {
                 let mut path = vec![];
@@ -368,14 +372,14 @@ impl State {
                         path.push(*m);
                     } else {
                         path.reverse();
-                        let duration = start.elapsed();
-                        println!(
-                            "Cleaning up {} visited items and {} frontier items. Took {duration:?} and visited {:.02} states/second. Final path length is {}.",
-                            visited.len(),
-                            frontier.len(),
-                            visited.len() as f64 / duration.as_secs_f64(),
-                            path.len(),
-                        );
+                        // let duration = start.elapsed();
+                        // println!(
+                        //     "Cleaning up {} visited items and {} frontier items. Took {duration:?} and visited {:.02} states/second. Final path length is {}.",
+                        //     visited.len(),
+                        //     frontier.len(),
+                        //     visited.len() as f64 / duration.as_secs_f64(),
+                        //     path.len(),
+                        // );
                         return path;
                     }
                 }
@@ -507,27 +511,85 @@ fn main() {
     // state.saved[2] = Some(Saved::Card(Card { kind: b'e' }));
     // state.saved[3] = Some(Saved::Card(Card { kind: b'r' }));
 
-    let mut n = 0;
-    let mut solvable = 0;
-    loop {
-        let mut state = State::rand(8, 1);
-        println!("{state}");
-        let path = state.solve();
-        if path.len() > 0 {
-            solvable += 1;
-        }
-        n += 1;
-        for m in path.iter() {
-            println!("{m:?}");
-            state.play(m.clone());
-            println!("{state}");
-        }
-        println!("Path length: {}", path.len());
-        println!(
-            "Solvable: {solvable}/{n} = {:.02}%",
-            solvable as f64 / n as f64 * 100.0
-        );
+    struct Stats {
+        n: usize,
+        solvable: usize,
+        path_lengths: usize,
     }
+
+    impl Add for Stats {
+        type Output = Stats;
+
+        fn add(self, rhs: Self) -> Self::Output {
+            Stats {
+                n: self.n + rhs.n,
+                solvable: self.solvable + rhs.solvable,
+                path_lengths: self.path_lengths + rhs.path_lengths,
+            }
+        }
+    }
+    impl Sum for Stats {
+        fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
+            iter.reduce(|a, x| a + x).unwrap_or(Stats {
+                n: 0,
+                solvable: 0,
+                path_lengths: 0,
+            })
+        }
+    }
+
+    let stats: Vec<Stats> = (0..10000)
+        .into_par_iter()
+        .map(|_| {
+            let state = State::rand(8, 1);
+            // println!("{state}");
+            let path = state.solve();
+            // if path.len() > 0 {
+            //     solvable += 1;
+            // }
+            // n += 1;
+            // for m in path.iter() {
+            //     println!("{m:?}");
+            //     state.play(m.clone());
+            //     println!("{state}");
+            // }
+            // println!("Path length: {}", path.len());
+            Stats {
+                n: 1,
+                solvable: if path.len() > 0 { 1 } else { 0 },
+                path_lengths: path.len(),
+            }
+            // path_lengths += path.len();
+            // println!(
+            //     "Solvable: {solvable}/{n} = {:.02}% with average path length of {:.02}",
+            //     solvable as f64 / n as f64 * 100.0,
+            //     path_lengths as f64 / n as f64,
+            // );
+        })
+        .collect();
+
+    let mut path_lengths: Vec<usize> = stats
+        .iter()
+        .map(|x| x.path_lengths)
+        .filter(|x| *x != 0)
+        .collect();
+    path_lengths.sort_unstable();
+    println!("Max path length: {}", path_lengths.last().unwrap());
+    println!("Min path length: {}", path_lengths.first().unwrap());
+    println!(
+        "Median path length: {}",
+        path_lengths[path_lengths.len() / 2]
+    );
+
+    let stats: Stats = stats.into_iter().sum();
+
+    println!(
+        "Solvable: {}/{} = {:.02}% with average path length of {:.02}",
+        stats.solvable,
+        stats.n,
+        stats.solvable as f64 / stats.n as f64 * 100.0,
+        stats.path_lengths as f64 / stats.solvable as f64,
+    );
 }
 
 #[cfg(test)]
