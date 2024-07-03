@@ -13,7 +13,11 @@ struct Card {
 
 impl Display for Card {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.kind as char)
+        if (self.kind as char).is_ascii_alphanumeric() {
+            write!(f, "{}", self.kind as char)
+        } else {
+            write!(f, "{}", self.kind)
+        }
     }
 }
 
