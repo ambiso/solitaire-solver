@@ -262,6 +262,19 @@ impl State {
         v
     }
 
+    fn lock_stack_if_lockable(&mut self, id: usize) {
+        let stack = self.stacks[id].cards_mut().unwrap();
+        if stack.cards.len() > 0 {
+            let c = stack.cards[0];
+            if stack.cards.len() == 4 && stack.cards.iter().all(|x| *x == c) {
+                self.stacks[id] = Stack::Locked;
+                if self.saved.len() < 4 {
+                    self.saved.push(None);
+                }
+            }
+        }
+    }
+
     fn play(&mut self, m: Move) {
         match m {
             Move::StackToStack { from, to, count } => {
@@ -279,16 +292,8 @@ impl State {
                     to_card_stack.cards.push(card);
                 }
 
-                if to_card_stack.cards.len() > 0 {
-                    let c = to_card_stack.cards[0];
-                    if to_card_stack.cards.len() == 4 && to_card_stack.cards.iter().all(|x| *x == c)
-                    {
-                        self.stacks[to] = Stack::Locked;
-                        if self.saved.len() < 4 {
-                            self.saved.push(None);
-                        }
-                    }
-                }
+                self.lock_stack_if_lockable(to);
+                self.lock_stack_if_lockable(from);
             }
             Move::StackToSaved { from, to, count } => {
                 debug_assert!(count > 0 && (count == 1 || count == 4));
@@ -306,6 +311,7 @@ impl State {
                 } else if count == 4 {
                     *to_card_stack = Some(Saved::Locked);
                 }
+                self.lock_stack_if_lockable(from);
             }
             Move::SavedToStack { from, to } => {
                 let from_card_stack = &mut self.saved[from];
@@ -501,16 +507,26 @@ fn main() {
     // state.saved[2] = Some(Saved::Card(Card { kind: b'e' }));
     // state.saved[3] = Some(Saved::Card(Card { kind: b'r' }));
 
+    let mut n = 0;
+    let mut solvable = 0;
     loop {
         let mut state = State::rand(8, 1);
         println!("{state}");
         let path = state.solve();
+        if path.len() > 0 {
+            solvable += 1;
+        }
+        n += 1;
         for m in path.iter() {
             println!("{m:?}");
             state.play(m.clone());
             println!("{state}");
         }
         println!("Path length: {}", path.len());
+        println!(
+            "Solvable: {solvable}/{n} = {:.02}%",
+            solvable as f64 / n as f64 * 100.0
+        );
     }
 }
 
