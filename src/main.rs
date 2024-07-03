@@ -4,6 +4,7 @@ use rand::Rng;
 use std::{
     collections::{BTreeSet, HashMap},
     fmt::{Debug, Display},
+    time::Instant,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -328,11 +329,11 @@ impl State {
     }
 
     fn solve(&self) -> Vec<Move> {
+        let start = Instant::now();
         let mut visited: HashMap<State, Option<(State, Move)>> = HashMap::new();
 
         let mut max_num_locked = 0;
         let mut frontier = PriorityQueue::new();
-        // let ci = |e: &QueueEntry| -((10 - e.state.num_locked() as i64) + e.moves as i64);
         let ci = |e: &QueueEntry| -(e.state.groups() as i64 + e.moves as i64);
         let init = QueueEntry {
             state: self.clone(),
@@ -361,10 +362,12 @@ impl State {
                         path.push(*m);
                     } else {
                         path.reverse();
-                        eprintln!(
-                            "Cleaning up {} visited items and {} frontier items",
+                        let duration = start.elapsed();
+                        println!(
+                            "Cleaning up {} visited items and {} frontier items. Took {duration:?} and visited {:.02} states/second.",
                             visited.len(),
-                            frontier.len()
+                            frontier.len(),
+                            visited.len() as f64 / duration.as_secs_f64()
                         );
                         return path;
                     }
@@ -477,35 +480,37 @@ enum Move {
 }
 
 fn main() {
-    let mut state = State::rand(8, 1);
-//     let mut state = State::parse(
-//         8,
-//         2,
-//         r"
-// L
-// tlhjl
-// ewwww
-// thjtl
-// jj
-// deyt
-// yhydy
-// leedd
-//     ",
-//     );
+    //     let mut state = State::parse(
+    //         8,
+    //         2,
+    //         r"
+    // L
+    // tlhjl
+    // ewwww
+    // thjtl
+    // jj
+    // deyt
+    // yhydy
+    // leedd
+    //     ",
+    //     );
 
-//     state.saved[0] = Some(Saved::Card(Card { kind: b'h' }));
-//     state.saved[1] = Some(Saved::Locked);
+    //     state.saved[0] = Some(Saved::Card(Card { kind: b'h' }));
+    //     state.saved[1] = Some(Saved::Locked);
     // state.saved[2] = Some(Saved::Card(Card { kind: b'e' }));
     // state.saved[3] = Some(Saved::Card(Card { kind: b'r' }));
 
-    println!("{state}");
-    let path = state.solve();
-    for m in path.iter() {
-        println!("{m:?}");
-        state.play(m.clone());
+    loop {
+        let mut state = State::rand(8, 1);
         println!("{state}");
+        let path = state.solve();
+        for m in path.iter() {
+            println!("{m:?}");
+            state.play(m.clone());
+            println!("{state}");
+        }
+        println!("Path length: {}", path.len());
     }
-    println!("Path length: {}", path.len());
 }
 
 #[cfg(test)]
