@@ -500,7 +500,6 @@ fn main() {
 
     println!("{state}");
     let path = state.solve();
-    dbg!(&path);
     for m in path.iter() {
         println!("{m:?}");
         state.play(m.clone());
