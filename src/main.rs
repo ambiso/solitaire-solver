@@ -364,10 +364,11 @@ impl State {
                         path.reverse();
                         let duration = start.elapsed();
                         println!(
-                            "Cleaning up {} visited items and {} frontier items. Took {duration:?} and visited {:.02} states/second.",
+                            "Cleaning up {} visited items and {} frontier items. Took {duration:?} and visited {:.02} states/second. Final path length is {}.",
                             visited.len(),
                             frontier.len(),
-                            visited.len() as f64 / duration.as_secs_f64()
+                            visited.len() as f64 / duration.as_secs_f64(),
+                            path.len(),
                         );
                         return path;
                     }
